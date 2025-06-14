@@ -9,6 +9,8 @@
 #include <fstream>
 #include <sstream>
 #include <iostream>
+#include <vector>
+#include <string>
 
 Model::Model() : VBO(0) {}
 
@@ -28,7 +30,7 @@ bool Model::loadFromOBJ(const std::string& path) {
     
     while (std::getline(file, line)) {
         lineNumber++;
-        if (line.empty() || line[0] == '#') continue;  // 빈 줄이나 주석 스킵
+        if (line.empty() || line[0] == '#') continue;
         
         std::istringstream iss(line);
         std::string prefix;
@@ -53,104 +55,111 @@ bool Model::loadFromOBJ(const std::string& path) {
             }
         }
         else if (prefix == "f") {
-            std::string vertex1, vertex2, vertex3;
-            if (iss >> vertex1 >> vertex2 >> vertex3) {
+            // 한 줄의 모든 vertex 읽기
+            std::vector<std::string> face_vertices;
+            std::string vertex_str;
+            
+            while (iss >> vertex_str) {
+                face_vertices.push_back(vertex_str);
+            }
+            
+            if (face_vertices.size() < 3) {
+                std::cerr << "Error: Face with less than 3 vertices at line " << lineNumber << std::endl;
+                continue;
+            }
+            
+            // Face vertex 정보 파싱
+            std::vector<unsigned int> pos_indices, norm_indices, tex_indices;
+            bool validFace = true;
+            
+            for (const std::string& vertex : face_vertices) {
+                unsigned int pos_idx = 0, tex_idx = 0, norm_idx = 0;
                 
-                // 각 vertex string을 파싱 (변수명 변경: vertices -> vertex_strings)
-                std::vector<std::string> vertex_strings = {vertex1, vertex2, vertex3};
-                std::vector<unsigned int> pos_indices, norm_indices;
-                
-                bool validFace = true;
-                
-                for (const std::string& vertex_str : vertex_strings) {
-                    unsigned int pos_idx = 0, tex_idx = 0, norm_idx = 0;
+                // v/vt/vn 형태 파싱
+                size_t first_slash = vertex.find('/');
+                if (first_slash == std::string::npos) {
+                    // v 형태
+                    pos_idx = std::stoi(vertex) - 1;
+                } else {
+                    // position 파싱
+                    pos_idx = std::stoi(vertex.substr(0, first_slash)) - 1;
                     
-                    // v/vt/vn 형태 파싱
-                    size_t first_slash = vertex_str.find('/');
-                    if (first_slash == std::string::npos) {
-                        // v 형태 (position만)
-                        pos_idx = std::stoi(vertex_str) - 1;
+                    size_t second_slash = vertex.find('/', first_slash + 1);
+                    if (second_slash == std::string::npos) {
+                        // v/vt 형태
+                        if (first_slash + 1 < vertex.length()) {
+                            tex_idx = std::stoi(vertex.substr(first_slash + 1)) - 1;
+                        }
                     } else {
-                        // position 파싱
-                        pos_idx = std::stoi(vertex_str.substr(0, first_slash)) - 1;
-                        
-                        size_t second_slash = vertex_str.find('/', first_slash + 1);
-                        if (second_slash == std::string::npos) {
-                            // v/vt 형태
-                            if (first_slash + 1 < vertex_str.length()) {
-                                tex_idx = std::stoi(vertex_str.substr(first_slash + 1)) - 1;
-                            }
-                        } else {
-                            // v/vt/vn 또는 v//vn 형태
-                            if (second_slash > first_slash + 1) {
-                                // v/vt/vn 형태
-                                tex_idx = std::stoi(vertex_str.substr(first_slash + 1, second_slash - first_slash - 1)) - 1;
-                            }
-                            // normal 파싱
-                            if (second_slash + 1 < vertex_str.length()) {
-                                norm_idx = std::stoi(vertex_str.substr(second_slash + 1)) - 1;
-                            }
+                        // v/vt/vn 또는 v//vn 형태
+                        if (second_slash > first_slash + 1) {
+                            // v/vt/vn 형태
+                            tex_idx = std::stoi(vertex.substr(first_slash + 1, second_slash - first_slash - 1)) - 1;
+                        }
+                        // normal 파싱
+                        if (second_slash + 1 < vertex.length()) {
+                            norm_idx = std::stoi(vertex.substr(second_slash + 1)) - 1;
                         }
                     }
-                    
-                    // 범위 체크
-                    if (pos_idx >= temp_positions.size()) {
-                        std::cerr << "Error: Position index " << pos_idx << " out of range at line " << lineNumber << std::endl;
-                        validFace = false;
-                        break;
-                    }
-                    
-                    if (norm_idx > 0 && norm_idx >= temp_normals.size()) {
-                        std::cerr << "Error: Normal index " << norm_idx << " out of range at line " << lineNumber << std::endl;
-                        validFace = false;
-                        break;
-                    }
-                    
-                    pos_indices.push_back(pos_idx);
-                    norm_indices.push_back(norm_idx);
                 }
                 
-                if (validFace) {
-                    // Vertex 생성
-                    for (int i = 0; i < 3; i++) {
-                        Vertex vertex;
+                // 범위 체크
+                if (pos_idx >= temp_positions.size()) {
+                    std::cerr << "Error: Position index " << pos_idx << " out of range at line " << lineNumber << std::endl;
+                    validFace = false;
+                    break;
+                }
+                
+                if (!temp_normals.empty() && norm_idx >= temp_normals.size()) {
+                    std::cerr << "Error: Normal index " << norm_idx << " out of range at line " << lineNumber << std::endl;
+                    validFace = false;
+                    break;
+                }
+                
+                pos_indices.push_back(pos_idx);
+                norm_indices.push_back(norm_idx);
+                tex_indices.push_back(tex_idx);
+            }
+            
+            if (!validFace) continue;
+            
+            // Face를 삼각형으로 분할 (Fan triangulation)
+            // Face가 n개의 vertex를 가질 때, (n-2)개의 삼각형으로 분할
+            for (size_t i = 1; i < face_vertices.size() - 1; i++) {
+                // 삼각형: 0, i, i+1
+                std::vector<int> triangle_indices = {0, (int)i, (int)i+1};
+                
+                for (int tri_idx : triangle_indices) {
+                    Vertex vertex;
+                    
+                    // Position 설정
+                    glm::vec3 pos = temp_positions[pos_indices[tri_idx]];
+                    vertex.position[0] = pos.x;
+                    vertex.position[1] = pos.y;
+                    vertex.position[2] = pos.z;
+                    
+                    // Normal 설정
+                    if (!temp_normals.empty() && norm_indices[tri_idx] < temp_normals.size()) {
+                        glm::vec3 normal = temp_normals[norm_indices[tri_idx]];
+                        vertex.normal[0] = normal.x;
+                        vertex.normal[1] = normal.y;
+                        vertex.normal[2] = normal.z;
+                    } else {
+                        // Face normal 계산
+                        glm::vec3 v0 = temp_positions[pos_indices[0]];
+                        glm::vec3 v1 = temp_positions[pos_indices[1]];
+                        glm::vec3 v2 = temp_positions[pos_indices[2]];
                         
-                        // Position 설정
-                        glm::vec3 pos = temp_positions[pos_indices[i]];
-                        vertex.position[0] = pos.x;
-                        vertex.position[1] = pos.y;
-                        vertex.position[2] = pos.z;
+                        glm::vec3 edge1 = v1 - v0;
+                        glm::vec3 edge2 = v2 - v0;
+                        glm::vec3 face_normal = glm::normalize(glm::cross(edge1, edge2));
                         
-                        // Normal 설정
-                        if (!temp_normals.empty() && norm_indices[i] < temp_normals.size()) {
-                            glm::vec3 normal = temp_normals[norm_indices[i]];
-                            vertex.normal[0] = normal.x;
-                            vertex.normal[1] = normal.y;
-                            vertex.normal[2] = normal.z;
-                        } else {
-                            // 임시로 기본 normal 설정 (나중에 face normal로 교체됨)
-                            vertex.normal[0] = 0.0f;
-                            vertex.normal[1] = 1.0f;
-                            vertex.normal[2] = 0.0f;
-                        }
-                        
-                        // 클래스 멤버 변수에 추가
-                        this->vertices.push_back(vertex);
+                        vertex.normal[0] = face_normal.x;
+                        vertex.normal[1] = face_normal.y;
+                        vertex.normal[2] = face_normal.z;
                     }
                     
-                    // Normal이 설정되지 않은 경우 face normal 계산 및 적용
-                    if (temp_normals.empty() || norm_indices[0] >= temp_normals.size()) {
-                        size_t start_idx = this->vertices.size() - 3;
-                        glm::vec3 v1 = temp_positions[pos_indices[1]] - temp_positions[pos_indices[0]];
-                        glm::vec3 v2 = temp_positions[pos_indices[2]] - temp_positions[pos_indices[0]];
-                        glm::vec3 face_normal = glm::normalize(glm::cross(v1, v2));
-                        
-                        for (int i = 0; i < 3; i++) {
-                            this->vertices[start_idx + i].normal[0] = face_normal.x;
-                            this->vertices[start_idx + i].normal[1] = face_normal.y;
-                            this->vertices[start_idx + i].normal[2] = face_normal.z;
-                        }
-                    }
+                    this->vertices.push_back(vertex);
                 }
             }
         }
@@ -194,11 +203,9 @@ void Model::draw() {
     
     glBindBuffer(GL_ARRAY_BUFFER, VBO);
     
-    // aPos (location 0)
     glEnableVertexAttribArray(0);
     glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)0);
     
-    // aNormal (location 1)
     glEnableVertexAttribArray(1);
     glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)(3 * sizeof(float)));
 

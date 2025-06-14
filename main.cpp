@@ -16,6 +16,13 @@
 void initOpenGL() {
     glEnable(GL_DEPTH_TEST);
     glClearColor(0.1f, 0.1f, 0.1f, 1.0f);
+    
+    // Back-face culling 활성화
+    glEnable(GL_CULL_FACE);
+    glCullFace(GL_BACK);
+    glFrontFace(GL_CCW);
+    
+    std::cout << "OpenGL initialized with depth test and back-face culling" << std::endl;
 }
 
 int main(int argc, char** argv) {
