@@ -13,11 +13,16 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
 
+// 전방 선언
 class ShaderProgram;
 class Model;
+class Texture;
 
-// 함수 선언만 (전역 변수 선언 제거)
+// 렌더링 함수들
 void renderScene();
 void updateAnimation();
+
+// 포인터 설정 함수들
 void setScenePointers(ShaderProgram* shader, Model* model);
+void setTexturePointers(Texture* bark, Texture* leaf);  // 텍스처 설정 함수 추가
 

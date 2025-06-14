@@ -67,6 +67,8 @@ ShaderProgram::ShaderProgram(const char* vertexPath, const char* fragmentPath) {
     // attribute location 바인딩 추가
     glBindAttribLocation(ID, 0, "aPos");
     glBindAttribLocation(ID, 1, "aNormal");
+    glBindAttribLocation(ID, 2, "aTexCoord");    // 텍스처 좌표 추가
+    glBindAttribLocation(ID, 3, "aMaterialID");  // 재질 ID 추가
     
     glLinkProgram(ID);
     glGetProgramiv(ID, GL_LINK_STATUS, &success);

@@ -8,14 +8,18 @@
 #include "RenderScene.hpp"
 #include "ShaderProgram.hpp"
 #include "Model.hpp"
-#include "MouseController.hpp"  // 마우스 컨트롤러 헤더 추가
+#include "MouseController.hpp"
+#include "Texture.hpp"  // 텍스처 헤더 추가
 #include <iostream>
 
-static float angle = 0.0f;
+// 전역 포인터들
+ShaderProgram* g_shaderProgram = nullptr;
+Model* g_model = nullptr;
+Texture* g_barkTexture = nullptr;   // 나무 텍스처
+Texture* g_leafTexture = nullptr;   // 나뭇잎 텍스처
 
-// 전역 포인터들 (외부에서 설정됨)
-static ShaderProgram* g_shaderProgram = nullptr;
-static Model* g_model = nullptr;
+// 애니메이션 변수
+float angle = 0.0f;
 
 void setScenePointers(ShaderProgram* shader, Model* model) {
     g_shaderProgram = shader;
@@ -24,10 +28,11 @@ void setScenePointers(ShaderProgram* shader, Model* model) {
               << ", Model: " << (model ? "OK" : "NULL") << std::endl;
 }
 
-void updateAnimation() {
-    angle += 0.01f;
-    if (angle > 6.28319f) angle -= 6.28319f; // 2*PI
-    glutPostRedisplay();
+void setTexturePointers(Texture* bark, Texture* leaf) {
+    g_barkTexture = bark;
+    g_leafTexture = leaf;
+    std::cout << "Texture pointers set - Bark: " << (bark ? "OK" : "NULL") 
+              << ", Leaf: " << (leaf ? "OK" : "NULL") << std::endl;
 }
 
 void renderScene() {
@@ -52,15 +57,12 @@ void renderScene() {
     glUniformMatrix4fv(glGetUniformLocation(g_shaderProgram->ID, "view"), 1, GL_FALSE, glm::value_ptr(viewMat));
     glUniformMatrix4fv(glGetUniformLocation(g_shaderProgram->ID, "projection"), 1, GL_FALSE, glm::value_ptr(projMat));
 
-    // --- 조명 및 재질 uniform ---
+    // 조명 및 재질 uniform
     glm::vec3 lightPos(2.0f, 4.0f, 2.0f);
     glm::vec3 viewPos = MouseController::getCameraPosition();
     glm::vec3 lightAmbient(0.2f, 0.2f, 0.2f);
     glm::vec3 lightDiffuse(0.8f, 0.8f, 0.8f);
     glm::vec3 lightSpecular(1.0f, 1.0f, 1.0f);
-    glm::vec3 materialAmbient(0.2f, 0.2f, 0.2f);
-    glm::vec3 materialDiffuse(0.7f, 0.7f, 0.7f);
-    glm::vec3 materialSpecular(1.0f, 1.0f, 1.0f);
     float shininess = 32.0f;
 
     glUniform3fv(glGetUniformLocation(g_shaderProgram->ID, "lightPos"), 1, glm::value_ptr(lightPos));
@@ -68,13 +70,40 @@ void renderScene() {
     glUniform3fv(glGetUniformLocation(g_shaderProgram->ID, "lightAmbient"), 1, glm::value_ptr(lightAmbient));
     glUniform3fv(glGetUniformLocation(g_shaderProgram->ID, "lightDiffuse"), 1, glm::value_ptr(lightDiffuse));
     glUniform3fv(glGetUniformLocation(g_shaderProgram->ID, "lightSpecular"), 1, glm::value_ptr(lightSpecular));
-    glUniform3fv(glGetUniformLocation(g_shaderProgram->ID, "materialAmbient"), 1, glm::value_ptr(materialAmbient));
-    glUniform3fv(glGetUniformLocation(g_shaderProgram->ID, "materialDiffuse"), 1, glm::value_ptr(materialDiffuse));
-    glUniform3fv(glGetUniformLocation(g_shaderProgram->ID, "materialSpecular"), 1, glm::value_ptr(materialSpecular));
     glUniform1f(glGetUniformLocation(g_shaderProgram->ID, "shininess"), shininess);
 
-    // --- 드로우 ---
+    // 텍스처 바인딩 (있는 경우)
+    if (g_barkTexture && g_leafTexture) {
+        g_barkTexture->bind(0);  // GL_TEXTURE0
+        g_leafTexture->bind(1);  // GL_TEXTURE1
+        
+        // 셰이더에 텍스처 유닛 전달
+        glUniform1i(glGetUniformLocation(g_shaderProgram->ID, "barkTexture"), 0);
+        glUniform1i(glGetUniformLocation(g_shaderProgram->ID, "leafTexture"), 1);
+        glUniform1i(glGetUniformLocation(g_shaderProgram->ID, "useTexture"), 1);
+    } else {
+        // 텍스처가 없는 경우
+        glUniform1i(glGetUniformLocation(g_shaderProgram->ID, "useTexture"), 0);
+    }
+
+    // 드로우
     g_model->draw();
 
+    // 텍스처 언바인드
+    if (g_barkTexture && g_leafTexture) {
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, 0);
+        glActiveTexture(GL_TEXTURE1);
+        glBindTexture(GL_TEXTURE_2D, 0);
+    }
+
     glutSwapBuffers();
+}
+
+void updateAnimation() {
+    angle += 0.01f;  // 회전 속도
+    if (angle >= 360.0f) {
+        angle -= 360.0f;
+    }
+    glutPostRedisplay();
 }
