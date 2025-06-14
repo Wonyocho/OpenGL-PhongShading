@@ -159,6 +159,33 @@ bool Model::loadFromOBJ(const std::string& path) {
                         vertex.normal[2] = face_normal.z;
                     }
                     
+                    // **텍스처 좌표 설정 (추가된 부분)**
+                    if (!temp_texcoords.empty() && tex_indices[tri_idx] < temp_texcoords.size()) {
+                        glm::vec2 texCoord = temp_texcoords[tex_indices[tri_idx]];
+                        vertex.texCoord[0] = texCoord.x;
+                        vertex.texCoord[1] = texCoord.y;
+                    } else {
+                        // 기본 텍스처 좌표 설정
+                        if (tri_idx == 0) {
+                            vertex.texCoord[0] = 0.0f;
+                            vertex.texCoord[1] = 0.0f;
+                        } else if (tri_idx == 1) {
+                            vertex.texCoord[0] = 1.0f;
+                            vertex.texCoord[1] = 0.0f;
+                        } else {
+                            vertex.texCoord[0] = 0.5f;
+                            vertex.texCoord[1] = 1.0f;
+                        }
+                    }
+                    
+                    // **재질 ID 설정 (추가된 부분)**
+                    // Quad면 = 나무(0), Triangle면 = 나뭇잎(1)
+                    if (face_vertices.size() == 4) {
+                        vertex.materialID = 0;  // 나무 (Quad)
+                    } else {
+                        vertex.materialID = 1;  // 나뭇잎 (Triangle)
+                    }
+                    
                     this->vertices.push_back(vertex);
                 }
             }
@@ -203,15 +230,27 @@ void Model::draw() {
     
     glBindBuffer(GL_ARRAY_BUFFER, VBO);
     
+    // Position (location 0)
     glEnableVertexAttribArray(0);
     glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)0);
     
+    // Normal (location 1)
     glEnableVertexAttribArray(1);
     glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)(3 * sizeof(float)));
+    
+    // TexCoord (location 2)
+    glEnableVertexAttribArray(2);
+    glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)(6 * sizeof(float)));
+    
+    // MaterialID (location 3)
+    glEnableVertexAttribArray(3);
+    glVertexAttribPointer(3, 1, GL_INT, GL_FALSE, sizeof(Vertex), (void*)(8 * sizeof(float)));
 
     glDrawArrays(GL_TRIANGLES, 0, vertices.size());
     
     glDisableVertexAttribArray(0);
     glDisableVertexAttribArray(1);
+    glDisableVertexAttribArray(2);
+    glDisableVertexAttribArray(3);
     glBindBuffer(GL_ARRAY_BUFFER, 0);
 }
